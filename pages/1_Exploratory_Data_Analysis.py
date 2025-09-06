@@ -5,6 +5,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="EDA - Course Recommendation System", layout="wide")
 st.title("📊 Exploratory Data Analysis")
@@ -20,7 +22,7 @@ def load_data():
 courses, ratings = load_data()
 
 # Create tabs for better organization
-tab1, tab2, tab3, tab4 = st.tabs(["📚 Dataset Overview", "⭐ Ratings Analysis", "🎯 Course Analysis", "👥 User Behavior"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📚 Dataset Overview", "⭐ Ratings Analysis", "🎯 Course Analysis", "👥 User Behavior", "📈 Enrollment Analysis"])
 
 with tab1:
     st.header("Dataset Overview")
@@ -129,29 +131,76 @@ with tab3:
     course_popularity.columns = ['rating_count', 'avg_rating']
     course_popularity = course_popularity.reset_index()
     
+    # TOP 20 MOST POPULAR COURSES (Changed from 10 to 20)
+    st.subheader("🏆 Top 20 Most Popular Courses")
+    top_20_rated = course_popularity.nlargest(20, 'rating_count')
+    
+    fig_top20 = px.bar(
+        top_20_rated,
+        x='rating_count',
+        y='TITLE',
+        orientation='h',
+        title="Top 20 Most Popular Courses by Number of Ratings",
+        labels={'rating_count': 'Number of Ratings', 'TITLE': 'Course Title'},
+        color='avg_rating',
+        color_continuous_scale='Viridis',
+        hover_data={'avg_rating': ':.2f', 'rating_count': True}
+    )
+    fig_top20.update_layout(
+        yaxis={'categoryorder':'total ascending'},
+        height=600,
+        coloraxis_colorbar_title="Avg Rating",
+        xaxis_title="Number of Enrollments/Ratings",
+        margin=dict(l=300)  # Increased left margin for longer course titles
+    )
+    st.plotly_chart(fig_top20, use_container_width=True)
+    
+    # WORD CLOUD SECTION
+    st.subheader("☁️ Course Titles Word Cloud")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        # Create word cloud from course titles
+        # Weight words by their popularity (rating count)
+        course_text_data = []
+        for _, row in course_popularity.iterrows():
+            # Repeat title based on rating count (normalized)
+            repeat_count = int(row['rating_count'] / 10) + 1  # Scale down for performance
+            course_text_data.extend([row['TITLE']] * repeat_count)
+        
+        text = ' '.join(course_text_data)
+        
+        # Generate word cloud
+        wordcloud = WordCloud(
+            width=800, 
+            height=400, 
+            background_color='white',
+            colormap='viridis',
+            max_words=100,
+            relative_scaling=0.5,
+            min_font_size=10
+        ).generate(text)
+        
+        # Display word cloud
+        fig_wc, ax = plt.subplots(figsize=(12, 6))
+        ax.imshow(wordcloud, interpolation='bilinear')
+        ax.axis('off')
+        ax.set_title("Most Frequent Words in Course Titles (Size = Popularity)", fontsize=14, pad=20)
+        st.pyplot(fig_wc)
+    
+    with col2:
+        st.info("""
+        **Word Cloud Insights:**
+        - Larger words appear more frequently in popular courses
+        - This visualization helps identify trending topics
+        - Common keywords can guide course categorization
+        """)
+    
+    # Additional course analysis
     col1, col2 = st.columns(2)
     
     with col1:
-        # Top 10 most rated courses
-        top_rated = course_popularity.nlargest(10, 'rating_count')
-        fig_bar = px.bar(
-            top_rated,
-            x='rating_count',
-            y='TITLE',
-            orientation='h',
-            title="Top 10 Most Rated Courses",
-            labels={'rating_count': 'Number of Ratings', 'TITLE': 'Course Title'},
-            color='avg_rating',
-            color_continuous_scale='Viridis'
-        )
-        fig_bar.update_layout(
-            yaxis={'categoryorder':'total ascending'},
-            height=400,
-            coloraxis_colorbar_title="Avg Rating"
-        )
-        st.plotly_chart(fig_bar, use_container_width=True)
-    
-    with col2:
         # Top 10 highest rated courses (with minimum ratings threshold)
         min_ratings = st.slider("Minimum ratings required", 5, 50, 10)
         filtered_courses = course_popularity[course_popularity['rating_count'] >= min_ratings]
@@ -174,26 +223,27 @@ with tab3:
         )
         st.plotly_chart(fig_bar2, use_container_width=True)
     
-    # Course genre analysis
-    st.subheader("🏷️ Course Genre Distribution")
-    genre_columns = [col for col in courses.columns if col not in ['COURSE_ID', 'TITLE']]
-    genre_counts = courses[genre_columns].sum().sort_values(ascending=False)
-    
-    fig_genre = px.bar(
-        x=genre_counts.values,
-        y=genre_counts.index,
-        orientation='h',
-        title="Course Distribution by Genre",
-        labels={'x': 'Number of Courses', 'y': 'Genre'},
-        color=genre_counts.values,
-        color_continuous_scale='Turbo'
-    )
-    fig_genre.update_layout(
-        showlegend=False,
-        height=500,
-        yaxis={'categoryorder':'total ascending'}
-    )
-    st.plotly_chart(fig_genre, use_container_width=True)
+    with col2:
+        # Course genre distribution
+        st.subheader("🏷️ Top Course Genres")
+        genre_columns = [col for col in courses.columns if col not in ['COURSE_ID', 'TITLE']]
+        genre_counts = courses[genre_columns].sum().sort_values(ascending=False).head(10)
+        
+        fig_genre = px.bar(
+            x=genre_counts.values,
+            y=genre_counts.index,
+            orientation='h',
+            title="Top 10 Course Genres",
+            labels={'x': 'Number of Courses', 'y': 'Genre'},
+            color=genre_counts.values,
+            color_continuous_scale='Turbo'
+        )
+        fig_genre.update_layout(
+            showlegend=False,
+            height=400,
+            yaxis={'categoryorder':'total ascending'}
+        )
+        st.plotly_chart(fig_genre, use_container_width=True)
 
 with tab4:
     st.header("User Behavior Analysis")
@@ -290,6 +340,177 @@ with tab4:
     fig_heatmap.update_layout(height=400)
     st.plotly_chart(fig_heatmap, use_container_width=True)
 
+# NEW TAB: ENROLLMENT ANALYSIS
+with tab5:
+    st.header("📈 Enrollment Distribution Analysis")
+    
+    # Calculate enrollment distribution (number of courses per user)
+    user_enrollments = ratings.groupby('user')['item'].nunique().reset_index()
+    user_enrollments.columns = ['user', 'courses_enrolled']
+    
+    # Create enrollment distribution
+    enrollment_dist = user_enrollments['courses_enrolled'].value_counts().sort_index().reset_index()
+    enrollment_dist.columns = ['num_courses', 'num_users']
+    
+    # Main enrollment distribution chart
+    st.subheader("📊 User Enrollment Distribution")
+    
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        fig_enrollment = px.bar(
+            enrollment_dist.head(30),  # Show up to 30 courses
+            x='num_courses',
+            y='num_users',
+            title="Number of Users by Course Enrollment Count",
+            labels={'num_courses': 'Number of Courses Enrolled', 'num_users': 'Number of Users'},
+            color='num_users',
+            color_continuous_scale='Viridis',
+            text='num_users'
+        )
+        fig_enrollment.update_traces(texttemplate='%{text}', textposition='outside')
+        fig_enrollment.update_layout(
+            height=500,
+            showlegend=False,
+            xaxis=dict(
+                title="Number of Courses Enrolled",
+                tickmode='linear',
+                tick0=1,
+                dtick=1
+            ),
+            yaxis_title="Number of Users"
+        )
+        st.plotly_chart(fig_enrollment, use_container_width=True)
+    
+    with col2:
+        # Key statistics
+        st.metric("Median Enrollments", f"{user_enrollments['courses_enrolled'].median():.0f} courses")
+        st.metric("Mean Enrollments", f"{user_enrollments['courses_enrolled'].mean():.1f} courses")
+        st.metric("Max Enrollments", f"{user_enrollments['courses_enrolled'].max()} courses")
+        st.metric("Single Course Users", f"{enrollment_dist[enrollment_dist['num_courses']==1]['num_users'].values[0]:,}")
+    
+    # Detailed enrollment breakdown
+    st.subheader("📋 Detailed Enrollment Breakdown")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        # Users with 1 course
+        single_course = enrollment_dist[enrollment_dist['num_courses']==1]['num_users'].values[0]
+        total_users = user_enrollments.shape[0]
+        st.info(f"""
+        **Single Course Users**
+        - Count: {single_course:,}
+        - Percentage: {single_course/total_users*100:.1f}%
+        """)
+    
+    with col2:
+        # Users with 2-5 courses
+        few_courses = enrollment_dist[(enrollment_dist['num_courses']>=2) & (enrollment_dist['num_courses']<=5)]['num_users'].sum()
+        st.info(f"""
+        **2-5 Courses**
+        - Count: {few_courses:,}
+        - Percentage: {few_courses/total_users*100:.1f}%
+        """)
+    
+    with col3:
+        # Users with 6-10 courses
+        moderate_courses = enrollment_dist[(enrollment_dist['num_courses']>=6) & (enrollment_dist['num_courses']<=10)]['num_users'].sum()
+        st.info(f"""
+        **6-10 Courses**
+        - Count: {moderate_courses:,}
+        - Percentage: {moderate_courses/total_users*100:.1f}%
+        """)
+    
+    # Additional row for heavy users
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        # Users with 11-20 courses
+        many_courses = enrollment_dist[(enrollment_dist['num_courses']>=11) & (enrollment_dist['num_courses']<=20)]['num_users'].sum()
+        st.info(f"""
+        **11-20 Courses**
+        - Count: {many_courses:,}
+        - Percentage: {many_courses/total_users*100:.1f}%
+        """)
+    
+    with col2:
+        # Users with >20 courses
+        power_users = enrollment_dist[enrollment_dist['num_courses']>20]['num_users'].sum()
+        st.info(f"""
+        **20+ Courses (Power Users)**
+        - Count: {power_users:,}
+        - Percentage: {power_users/total_users*100:.1f}%
+        """)
+    
+    with col3:
+        # Top enrollers
+        top_enrollers = user_enrollments.nlargest(5, 'courses_enrolled')
+        st.info(f"""
+        **Top 5 Enrollers**
+        {chr(10).join([f"- User {row['user']}: {row['courses_enrolled']} courses" for _, row in top_enrollers.iterrows()])}
+        """)
+    
+    # Cumulative distribution
+    st.subheader("📈 Cumulative Enrollment Distribution")
+    
+    enrollment_dist['cumulative_users'] = enrollment_dist['num_users'].cumsum()
+    enrollment_dist['cumulative_percentage'] = (enrollment_dist['cumulative_users'] / total_users * 100).round(1)
+    
+    fig_cumulative = go.Figure()
+    
+    fig_cumulative.add_trace(go.Scatter(
+        x=enrollment_dist['num_courses'].head(30),
+        y=enrollment_dist['cumulative_percentage'].head(30),
+        mode='lines+markers',
+        name='Cumulative %',
+        line=dict(color='#3498db', width=3),
+        marker=dict(size=8)
+    ))
+    
+    fig_cumulative.update_layout(
+        title="Cumulative Distribution of Course Enrollments",
+        xaxis_title="Number of Courses Enrolled (or fewer)",
+        yaxis_title="Cumulative Percentage of Users (%)",
+        height=400,
+        hovermode='x unified',
+        showlegend=False
+    )
+    
+    # Add horizontal lines for key percentiles
+    fig_cumulative.add_hline(y=50, line_dash="dash", line_color="red", annotation_text="50%")
+    fig_cumulative.add_hline(y=75, line_dash="dash", line_color="orange", annotation_text="75%")
+    fig_cumulative.add_hline(y=90, line_dash="dash", line_color="green", annotation_text="90%")
+    
+    st.plotly_chart(fig_cumulative, use_container_width=True)
+    
+    # Enrollment patterns table
+    st.subheader("📊 Enrollment Statistics Table")
+    
+    # Create a summary table
+    summary_data = []
+    ranges = [(1, 1), (2, 5), (6, 10), (11, 15), (16, 20), (21, float('inf'))]
+    range_labels = ['1 course', '2-5 courses', '6-10 courses', '11-15 courses', '16-20 courses', '21+ courses']
+    
+    for (low, high), label in zip(ranges, range_labels):
+        if high == float('inf'):
+            mask = enrollment_dist['num_courses'] >= low
+        else:
+            mask = (enrollment_dist['num_courses'] >= low) & (enrollment_dist['num_courses'] <= high)
+        
+        users_in_range = enrollment_dist[mask]['num_users'].sum()
+        percentage = users_in_range / total_users * 100
+        
+        summary_data.append({
+            'Enrollment Range': label,
+            'Number of Users': f"{users_in_range:,}",
+            'Percentage': f"{percentage:.1f}%",
+            'Cumulative %': f"{enrollment_dist[enrollment_dist['num_courses'] <= (high if high != float('inf') else enrollment_dist['num_courses'].max())]['num_users'].sum() / total_users * 100:.1f}%"
+        })
+    
+    summary_df = pd.DataFrame(summary_data)
+    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
 # Add a footer with summary insights
 st.markdown("---")
 st.subheader("💡 Key Insights")
@@ -297,14 +518,18 @@ st.subheader("💡 Key Insights")
 # Calculate some key insights
 avg_ratings_per_user = ratings.groupby('user')['rating'].count().mean()
 avg_ratings_per_course = ratings.groupby('item')['rating'].count().mean()
+avg_courses_per_user = user_enrollments['courses_enrolled'].mean()
+median_courses_per_user = user_enrollments['courses_enrolled'].median()
 sparsity = 1 - (len(ratings) / (ratings['user'].nunique() * ratings['item'].nunique()))
 
 insights = f"""
 - **Data Sparsity**: {sparsity:.2%} - The rating matrix is highly sparse, which is typical for recommendation systems
 - **Average ratings per user**: {avg_ratings_per_user:.1f}
 - **Average ratings per course**: {avg_ratings_per_course:.1f}
+- **Average courses per user**: {avg_courses_per_user:.1f} (Median: {median_courses_per_user:.0f})
 - **Rating Skew**: Most ratings tend toward {ratings['rating'].mode()[0]} (mode), indicating {"positive" if ratings['rating'].mode()[0] > 3 else "negative"} bias
 - **User Engagement**: {(len(user_activity[user_activity['ratings_count'] >= 5]) / len(user_activity) * 100):.1f}% of users have rated 5 or more courses
+- **Single Course Users**: {(enrollment_dist[enrollment_dist['num_courses']==1]['num_users'].values[0] / total_users * 100):.1f}% of users enrolled in only one course
 """
 
 st.info(insights)

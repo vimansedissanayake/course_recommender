@@ -6,4 +6,4 @@ scipy
 plotly
 tensorflow
 networkx
-train_nmf_model_v2
+wordcloud
